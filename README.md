@@ -21,3 +21,14 @@ each thread happens immediately as the previous thread enters the nogil state - 
 would be possible if the python interpreter was notified and in turn notified the
 next suspended thread.
 
+
+## A time.busy would be nice
+
+`time.sleep(s)` actually causes a thread to be *suspended* for `s` seconds.  When you
+are trying to reason about concurrency and parallelism and CPU usage, it is incorrect
+to use `time.sleep(s)` to try to simulate the thread doing `s` seconds of work.  But,
+as far as I know, there is no generic function (in python or C) that does the
+equivalent of 'be busy for s seconds'.  Such a function would be very useful in
+trying to reason about workloads because it would simulate what we actually want.
+
+
