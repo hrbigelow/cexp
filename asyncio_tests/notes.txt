@@ -1,0 +1,95 @@
+asyncio.gather accepts coros or futures.  it says:
+
+Coroutines will be wrapped in a future and scheduled in the event
+loop. They will not necessarily be scheduled in the same order as
+passed in.
+
+It returns a future whose result is a list of the individual results of the coros or
+futures.
+
+asyncio.wait accepts Futures or Tasks or Coroutines.  Coroutines will be wrapped in
+tasks.  Returns two sets of Future: (done, pending)
+
+
+Why does gather wrap its coroutine inputs in Future but asyncio.wait wraps them in
+Tasks?  
+
+Internally, asyncio.gather calls _ensure_future, which in turn calls create_task
+
+
+Note:  asyncio.Task is an instance of asyncio.Future
+
+asyncio.Future =====================================
+class Future(builtins.object)
+ |  Future(*, loop=None)
+ |
+ |  This class is *almost* compatible with concurrent.futures.Future.
+ |
+ |  Differences:
+ |
+ |  - result() and exception() do not take a timeout argument and
+ |    raise an exception when the future isn't done yet.
+ |
+ |  - Callbacks registered with add_done_callback() are always called
+ |    via the event loop's call_soon_threadsafe().
+ |
+ |  - This class is not compatible with the wait() and as_completed()
+ |    methods in the concurrent.futures package.
+
+
+
+QUESTIONS:
+
+Is there any way to retrieve the set of results from tasks in a TaskGroup?
+
+If tasks run concurrently
+
+
+Note a caution on creation of tasks:
+
+https://textual.textualize.io/blog/2023/02/11/the-heisenbug-lurking-in-your-async-code/
+
+Important Save a reference to the result of this function, to avoid a task
+disappearing mid-execution. The event loop only keeps weak references to tasks. A
+task that isn’t referenced elsewhere may get garbage collected at any time, even
+before it’s done. For reliable “fire-and-forget” background tasks, gather them in a
+collection:
+
+
+
+In point 4 you state:  "In asyncio, I/O operations are non-blocking".  By this you
+must mean that the OS thread that is running the Python asyncio event loop doesn't
+block.  But, metaphorically, the asyncio coroutine which reaches the IO request
+*does* have to suspend.  So, it seems like point 4 echoes the logic of point 1,
+namely that switching threads is more expensive than switching coroutines.  You are
+correct in your interpretation. When discussing non-blocking I/O in the context of
+`asyncio`, it is indeed in reference to the behavior of the OS thread running the
+Python asyncio event loop, not the individual coroutines. Let's clarify these points:
+
+1. **Non-Blocking I/O in Asyncio:** In `asyncio`, when a coroutine performs an I/O
+operation, it yields control back to the event loop using `await`. The I/O operation
+itself is non-blocking at the thread level — meaning the thread running the asyncio
+event loop does not get blocked waiting for the I/O operation to complete. Instead,
+the event loop can continue executing other coroutines.
+
+2. **Coroutine Suspension:** While the thread is non-blocking, the coroutine that
+initiated the I/O operation does indeed "suspend" or "pause." However, this
+suspension is not like a traditional blocking operation in a threaded context. The
+coroutine is simply marked as waiting and is resumed later by the event loop when the
+I/O operation is complete. This suspension and resumption are part of the coroutine's
+workflow and are managed efficiently by the event loop.
+
+3. **Efficiency in Context Switching:** Both points 1 and 4 highlight the efficiency
+of context switching in `asyncio`, but from slightly different perspectives:
+    - Point 1 emphasizes that coroutine switching (the act of pausing one coroutine
+      and resuming another) is more lightweight compared to thread context switching,
+      primarily due to user-space operation and simpler stack management.
+    - Point 4 focuses on the efficiency gained by avoiding thread blocking on I/O operations. While individual coroutines are suspended during I/O, the thread itself remains active and can continue processing other tasks. This leads to better utilization of the thread and avoids the overhead associated with blocking and unblocking threads in traditional multi-threaded I/O operations.
+
+In summary, the efficiency of `asyncio` stems from its ability to handle many tasks
+concurrently without blocking the OS thread, coupled with the lightweight nature of
+coroutine context switching. This makes it particularly well-suited for I/O-bound
+applications where traditional threaded approaches might suffer from the overhead of
+managing many blocked threads.
+
+
