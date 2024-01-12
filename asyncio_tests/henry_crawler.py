@@ -43,7 +43,6 @@ class Spider:
             ):
         # Schedule max_
         self.max_workers = asyncio.Semaphore(max_workers)
-        self.count_lock = asyncio.Lock()
         self.calls_left = max_calls
         
     async def run(
@@ -63,10 +62,9 @@ class Spider:
             val: str | set[str], 
             tg: asyncio.TaskGroup,
             ):
-        async with self.count_lock:
-            if self.calls_left == 0:
-                return
-            self.calls_left -= 1
+        if self.calls_left == 0:
+            return
+        self.calls_left -= 1
 
         if first_call:
             vals = val
