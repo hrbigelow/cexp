@@ -33,11 +33,11 @@ class Spider:
     try:
         async with asyncio.TaskGroup() as tg:
             await spider.run(coro_fn, start_vals, tg)
-    except BaseException as ex:
-        ...
-    """
+        except BaseException as ex:
+            ...
+        """
     def __init__(
-            self,
+        self,
             max_workers: int, 
             max_calls: int,
             ):
@@ -70,7 +70,12 @@ class Spider:
             vals = val
         else:
             async with self.max_workers:
-                vals = await coro_fn(val)
+                try:
+                    vals = await coro_fn(val)
+                    # print(f'\rCalls left: {self.calls_left}', file=sys.stderr, end='')
+                except BaseException as ex:
+                    print(f'Skipping {val}: {ex!r}', file=sys.stderr)
+                    return
         for val in vals:
             coro = self._run(False, coro_fn, val, tg)
             tg.create_task(coro)
@@ -98,7 +103,7 @@ class Crawler:
         return parser.found_links
 
     async def crawl(self, url: str):
-        print(f'Crawling {url}')
+        # print(f'Crawling {url}')
         await asyncio.sleep(0.1)
         response = await self.client.get(url, follow_redirects=True)
 
@@ -106,17 +111,20 @@ class Crawler:
             base=str(response.url),
             text=response.text,
         )
-        self.seen.update(found_links)
-        return found_links
+        new_links = found_links.difference(self.seen)
+        # print('found: ', new_links)
+        print(f'\rFound: {len(self.seen)}', file=sys.stderr, end='', flush=True)
+        self.seen.update(new_links)
+        return new_links 
 
     async def run(self):
-        self.seen.update(self.start_urls)
+        # self.seen.update(self.start_urls)
         spider = Spider(self.max_workers, self.limit_crawl)
         try:
             async with asyncio.TaskGroup() as tg:
                 await spider.run(self.crawl, self.start_urls, tg)
         except BaseException as ex:
-            print(f'Exception: {ex.message}')
+            print(f'Exception: {ex!r}')
             for subex in ex.exceptions:
                 print(subex)
         return
@@ -127,9 +135,11 @@ async def main(domain, workers, limit):
         allowed_schemes={"http", "https"},
         allowed_filetypes={".html", ".php", ""},
     )
+    limits = httpx.Limits(max_connections=20)
+    timeout = httpx.Timeout(None)
 
     start = time.perf_counter()
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
         crawler = Crawler(
             client=client,
             urls=['https://' + domain],
@@ -138,15 +148,15 @@ async def main(domain, workers, limit):
             limit=limit,
         )
         await crawler.run()
-    end = time.perf_counter()
+        end = time.perf_counter()
+        seen = sorted(crawler.seen)
 
-    seen = sorted(crawler.seen)
     # print("Results:")
-    # for url in seen:
-        # print(url)
-    print(f"Crawled: {crawler.total_crawled} URLs")
-    print(f"Found: {len(seen)} URLs")
-    print(f"Done in {end - start:.2f}s")
+    print(f"Crawled: {crawler.total_crawled} URLs", file=sys.stderr)
+    print(f"Found: {len(seen)} URLs", file=sys.stderr)
+    print(f"Done in {end - start:.2f}s", file=sys.stderr)
+    for url in seen:
+        print(url)
 
 
 if __name__ == '__main__':
@@ -154,5 +164,4 @@ if __name__ == '__main__':
     workers = int(sys.argv[2])
     limit = int(sys.argv[3])
     asyncio.run(main(domain, workers, limit), debug=False)
-    # asyncio.get_event_loop().run_until_complete(main())
 
