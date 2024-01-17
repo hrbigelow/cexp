@@ -1,85 +1,101 @@
+# Run with e.g.:
+# cd to the directory containing cexp
+# python -m cexp.streaming_problem 100
+
 """
-The following problem concerns concurrent generation of N individual modified
-fibonacci sequences.  The goal is to generate the elements of each sequence as
-intercalated as possible, as you might if these were N ChatGPT responses being
-streamed to individual users, and you want each new element to appear roughly at the
-same rate.
+A server must concurrently stream responses for N users' queries.  A response
+consists of a sequence of integers sent to a user.  The sequence is defined by
+pseudo-code: 
 
-Let fibmod(start, remval, i) be the "i'th modded, even fibonacci number starting at
-`start`", as defined below:
+response(seed, mod, length):
+    a, b = seed, seed
+    for _ in range(length):
+        a, b = b, (a + b) % mod
+        yield a
 
-fib(1,:)         = 1 1 2 3 5 8 13 21 34 55 89
-fib(1,:) % 10    = 1 1 3 4 5 8 3 1 4 5 9 ...
-fibmod(1, 10, :) = 4 8 4 ...
-
-Think of the `fibmod` function as a stand-in for some ongoing task or process which
-has its own independent dynamics and must be progressively computed, and periodically
-produce output. 
+The server sends each integer one at a time to a given user using an API call.  The
+user sees the integer appear on his screen in real time.  In order to provide the
+nicest user experience, the goal is to send the integers as fast as possible, but at
+a rate as evenly as possible for each user.
 
 You are given the following API functions:
 
-get_mod_val() -> int
+get_mod() -> int
+# returns the mod value to use for all responses
 
 write_output(idx, val) -> None
+# called to generate one element `val` of response `idx`
 
-Both functions record the timestamp when they are called.  You must implement a
-function that produces the same sequence of calls to `write_output` as defined by the 
-`stream` function below.  `fibmod` is not provided.
+You must implement a function with the following signature:
 
-In addition to producing the correct sequence of `write_output` calls, you should
-attempt to:
+stream(seeds: List[int], lengths: List[int]) -> None
 
-1. minimize the time gap between the first `get_mod_val()` call and the first
-`write_output` call.  (That precludes trying to pre-compute all of the `write_output`
-data before actually calling `write_output`)
+The `stream` function first calls `get_mod()` to get the mod value.  Then it must
+call `write_output` lengths[idx] times for each idx.  The values must be consistent
+with the response sequence as defined by `response(seeds[idx], mod, lengths[idx])`
 
-2. strive to minimize the maximal time interval between any two adjacent calls of
-`write_output` with the same index.
+Additionally, all calls to `get_mod()` and `write_output` have a timestamp recorded.
+Once all responses are completed, the maximum step duration is computed.  This is the
+maximum time lag between any two elements within a response.
 
+Constraints:
+
+10 <= N <= 100000
+len(seeds) == N
+len(length) == N
+1 <= seeds[i] <= 1000
+10000 <= mod <= 20000
+1000 <= length[i] <= 2000
 
 """
+
+from .streaming_solution import stream
 from typing import List
 import random
 import time
 import sys
 
-class Streaming:
-    def __init__(self, start_vals, lengths):
+
+class Server:
+    """
+    Class providing backend framework for generating test cases and validation
+    User must provide the `stream` function
+    """
+    def __init__(self, seeds, lengths):
         self.mod_val = None
         self.timestamps = []
         self.indexes = []
-        self.fibmods = []
-        self.start_vals = start_vals
+        self.values = []
+        self.seeds = seeds
         self.lengths = lengths
-        self.n = len(self.start_vals)
+        self.n = len(self.seeds)
 
     def get_mod_val(self):
         start = time.monotonic()
         self.timestamps.append(start)
         self.indexes.append(None)
-        self.fibmods.append(None)
+        self.values.append(None)
         self.mod_val = random.choice(range(10000, 50000))
         return self.mod_val
 
     def write_output(self, idx, val):
         self.timestamps.append(time.monotonic())
         self.indexes.append(idx)
-        self.fibmods.append(val)
+        self.values.append(val)
 
-    def _fibmod(self, idx):
-        # yield the even subset of the modded fibonacci starting at `start`
-        start = self.start_vals[idx] % self.mod_val
+    def _response(self, idx):
+        # yields the response for user `idx` 
+        start = self.seeds[idx] % self.mod_val
         n = self.lengths[idx]
         a, b = start, start
         for _ in range(n):
-            while a % 2 != 0:
-                a, b = b, (a + b) % self.mod_val
             yield a 
+            a, b = b, (a + b) % self.mod_val
 
     def check_order(self):
         # Call after user calls stream to confirm correctness
-        gens = [self._fibmod(idx) for idx in range(self.n)]
-        z = zip(self.indexes, self.fibmods)
+        gens = [self._response(idx) for idx in range(self.n)]
+        z = zip(self.indexes, self.values)
         next(z) # throw away first value
         for idx, val in z:
             try:
@@ -102,34 +118,36 @@ class Streaming:
             prev_time[idx] = ts
         return max(max_gaps)
 
-def stream(streaming: Streaming, start_vals: List[int], lengths: List[int]) -> None:
+    def evaluate(self, stream_fn):
+        """
+        Evaluate user-provided `stream_fn` on `n` concurrent streams.
+        Signature:
+        stream_fn(streaming: Streaming, seeds: List[int], lengths: List[int]) -> None
+        """
+        stream_fn(self, self.seeds, self.lengths)
+        if not self.check_order():
+            print(f'Failed ordering check')
+            return False
+        max_time_lag = self.find_max_gap()
+        print(f'Maximun time lag: {max_time_lag:0.5f}')
+
+
+
+# def stream(server: Server, seeds: List[int], lengths: List[int]) -> None:
     """
     The user-provided function.
     This function must call streaming.get_mod_val(), and then call
     streaming.write_output() repeatedly to generate the intercalated sequences.
     """
-    raise NotImplementedError
 
-def evaluate(n, stream_fn):
-    """
-    Evaluate user-provided `stream_fn` on `n` concurrent streams.
-    Signature:
-    stream_fn(streaming: Streaming, start_vals: List[int], lengths: List[int]) -> None
-    """
-    start_vals = random.choices(range(50000), k=n)
+def main(n):
+    seeds = random.choices(range(50000), k=n)
     lengths = random.choices(range(1000, 2000), k=n)
-    streaming = Streaming(start_vals, lengths)
-    stream_fn(streaming, start_vals, lengths)
-    print(f'{len(streaming.fibmods)=}')
-    if not streaming.check_order():
-        print(f'Failed ordering check')
-        return False
-    max_time_lag = streaming.find_max_gap()
-    print(f'Maximun time lag: {max_time_lag:0.5f}')
-
+    server = Server(seeds, lengths)
+    server.evaluate(stream)
 
 if __name__ == '__main__':
     n = int(sys.argv[1])
-    evaluate(n, stream)
+    main(n)
 
 

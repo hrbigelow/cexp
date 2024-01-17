@@ -6,9 +6,8 @@ def stream(streaming, start_vals: List[int], lengths: List[int]) -> None:
         sv = sv % rem
         a, b = sv, sv 
         for _ in range(n):
-            while a % 2 != 0:
-                a, b = b, (a + b) % rem
             streaming.write_output(idx, a)
+            a, b = b, (a + b) % rem
             await asyncio.sleep(0)
 
     mod_val = streaming.get_mod_val()
