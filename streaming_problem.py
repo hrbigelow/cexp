@@ -41,6 +41,7 @@ data before actually calling `write_output`)
 from typing import List
 import random
 import time
+import sys
 
 class Streaming:
     def __init__(self, start_vals, lengths):
@@ -107,6 +108,7 @@ def stream(streaming: Streaming, start_vals: List[int], lengths: List[int]) -> N
     This function must call streaming.get_mod_val(), and then call
     streaming.write_output() repeatedly to generate the intercalated sequences.
     """
+    raise NotImplementedError
 
 def evaluate(n, stream_fn):
     """
@@ -128,6 +130,6 @@ def evaluate(n, stream_fn):
 
 if __name__ == '__main__':
     n = int(sys.argv[1])
-    evaluate(n)
+    evaluate(n, stream)
 
 
