@@ -1,20 +1,18 @@
 from typing import List
 import asyncio
 
-def stream(streaming, start_vals: List[int], lengths: List[int]) -> None:
-    async def fibmod(idx, sv, rem, n):
-        sv = sv % rem
+def stream(streaming, seeds: List[int], lengths: List[int]) -> None:
+    async def response(idx, sv, n):
+        sv = sv % 10000 
         a, b = sv, sv 
         for _ in range(n):
             streaming.write_output(idx, a)
-            a, b = b, (a + b) % rem
+            a, b = b, (a + b) % 10000
             await asyncio.sleep(0)
-
-    mod_val = streaming.get_mod_val()
 
     async def _run():
         async with asyncio.TaskGroup() as tg:
-            for idx, (start_val, length) in enumerate(zip(start_vals, lengths)): 
-                tg.create_task(fibmod(idx, start_val, mod_val, length))
+            for idx, (seed, length) in enumerate(zip(seeds, lengths)): 
+                tg.create_task(response(idx, seed, length))
     asyncio.run(_run())
 

@@ -7,36 +7,36 @@ A server must concurrently stream responses for N users' queries.  A response
 consists of a sequence of integers sent to a user.  The sequence is defined by
 pseudo-code: 
 
-response(seed, mod, length):
+response(seed, length):
     a, b = seed, seed
     for _ in range(length):
-        a, b = b, (a + b) % mod
+        a, b = b, (a + b) % 10000
         yield a
 
 The server sends each integer one at a time to a given user using an API call.  The
 user sees the integer appear on his screen in real time.  In order to provide the
 nicest user experience, the goal is to send the integers as fast as possible, but at
-a rate as evenly as possible for each user.
+a rate as evenly as possible for each user.  Additionally, the time from program
+start to appearance of the first integer should be minimized.  
 
-You are given the following API functions:
-
-get_mod() -> int
-# returns the mod value to use for all responses
+You are given the following API function:
 
 write_output(idx, val) -> None
 # called to generate one element `val` of response `idx`
+# records current time when called
 
 You must implement a function with the following signature:
 
 stream(seeds: List[int], lengths: List[int]) -> None
 
-The `stream` function first calls `get_mod()` to get the mod value.  Then it must
-call `write_output` lengths[idx] times for each idx.  The values must be consistent
-with the response sequence as defined by `response(seeds[idx], mod, lengths[idx])`
+The stream function must generate the server responses by repeatedly calling
+`write_output(idx, val)` such that each subsequence for a given `idx` corresponds to
+`response(seeds[idx], lengths[idx])`.
 
-Additionally, all calls to `get_mod()` and `write_output` have a timestamp recorded.
-Once all responses are completed, the maximum step duration is computed.  This is the
-maximum time lag between any two elements within a response.
+Temporal User Experience Scores
+
+For user `idx`, two scores will be used to quantify the temporal quality of
+the user's experience, as defined by Server.temporal_scores 
 
 Constraints:
 
@@ -62,21 +62,13 @@ class Server:
     User must provide the `stream` function
     """
     def __init__(self, seeds, lengths):
-        self.mod_val = None
+        self.launch_time = time.monotonic()
         self.timestamps = []
         self.indexes = []
         self.values = []
         self.seeds = seeds
         self.lengths = lengths
         self.n = len(self.seeds)
-
-    def get_mod_val(self):
-        start = time.monotonic()
-        self.timestamps.append(start)
-        self.indexes.append(None)
-        self.values.append(None)
-        self.mod_val = random.choice(range(10000, 50000))
-        return self.mod_val
 
     def write_output(self, idx, val):
         self.timestamps.append(time.monotonic())
@@ -85,18 +77,17 @@ class Server:
 
     def _response(self, idx):
         # yields the response for user `idx` 
-        start = self.seeds[idx] % self.mod_val
+        start = self.seeds[idx] % 10000
         n = self.lengths[idx]
         a, b = start, start
         for _ in range(n):
             yield a 
-            a, b = b, (a + b) % self.mod_val
+            a, b = b, (a + b) % 10000 
 
     def check_order(self):
         # Call after user calls stream to confirm correctness
         gens = [self._response(idx) for idx in range(self.n)]
         z = zip(self.indexes, self.values)
-        next(z) # throw away first value
         for idx, val in z:
             try:
                 uval = next(gens[idx])
@@ -106,17 +97,24 @@ class Server:
                 return False
         return True
 
-    def find_max_gap(self):
-        # Find maximum time gap in each stream between consecutive outputs 
-        prev_time = [None] * self.n
-        max_gaps = [0] * self.n
-        z = zip(self.indexes, self.timestamps)
-        next(z) # throw away first value
-        for idx, ts in z:
-            if prev_time[idx] is not None:
-                max_gaps[idx] = max(max_gaps[idx], ts - prev_time[idx])
-            prev_time[idx] = ts
-        return max(max_gaps)
+    def _decollate(self):
+        timestamps = [list() for _ in range(self.n)]
+        for idx, ts in zip(self.indexes, self.timestamps):
+            timestamps[idx].append(ts)
+        return timestamps 
+
+    def temporal_scores(self):
+        # computes the maximal initial_lag, rate_variation across all users
+        timestamps = self._decollate()
+        max_variation = 0
+        max_lag = 0
+        for ts in timestamps:
+            jank = max(b-a for a,b in zip(ts[:-1], ts[1:]))
+            span = ts[-1] - ts[0]
+            lag = (ts[0] - self.launch_time) / span
+            max_lag = max(max_lag, lag)
+            max_variation = max(max_variation, jank / span)
+        return max_lag, max_variation
 
     def evaluate(self, stream_fn):
         """
@@ -128,10 +126,9 @@ class Server:
         if not self.check_order():
             print(f'Failed ordering check')
             return False
-        max_time_lag = self.find_max_gap()
-        print(f'Maximun time lag: {max_time_lag:0.5f}')
-
-
+        max_lag, max_variation = self.temporal_scores()
+        print(f'Max start lag: {max_lag:0.5f}')
+        print(f'Max variation: {max_variation:0.5f}')
 
 # def stream(server: Server, seeds: List[int], lengths: List[int]) -> None:
     """
