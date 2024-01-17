@@ -1,6 +1,8 @@
-# Run with e.g.:
-# cd to the directory containing cexp
-# python -m cexp.streaming_problem 100
+# How to run:
+# git clone https://github.com/hrbigelow/cexp.git
+# python -m cexp.streaming_problem <n>
+# This will run a test case with concurrency level n (10000 takes several seconds)
+# To try your own solution, uncomment the `stream` function below
 
 """
 A server must concurrently stream responses for N users' queries.  A response
@@ -54,7 +56,6 @@ from typing import List
 import random
 import time
 import sys
-
 
 class Server:
     """
@@ -118,9 +119,8 @@ class Server:
 
     def evaluate(self, stream_fn):
         """
-        Evaluate user-provided `stream_fn` on `n` concurrent streams.
-        Signature:
-        stream_fn(streaming: Streaming, seeds: List[int], lengths: List[int]) -> None
+        Calls `stream_fn`, then evaluates correctness and temporal scores.
+        Signature: stream_fn(server: Server, seeds: List[int], lengths: List[int]) -> None
         """
         stream_fn(self, self.seeds, self.lengths)
         if not self.check_order():
