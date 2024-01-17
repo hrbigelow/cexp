@@ -101,10 +101,19 @@ class Streaming:
             prev_time[idx] = ts
         return max(max_gaps)
 
-# def stream(streaming: Streaming, start_vals: List[int], lengths: List[int]) -> None:
-    # pass
+def stream(streaming: Streaming, start_vals: List[int], lengths: List[int]) -> None:
+    """
+    The user-provided function.
+    This function must call streaming.get_mod_val(), and then call
+    streaming.write_output() repeatedly to generate the intercalated sequences.
+    """
 
 def evaluate(n, stream_fn):
+    """
+    Evaluate user-provided `stream_fn` on `n` concurrent streams.
+    Signature:
+    stream_fn(streaming: Streaming, start_vals: List[int], lengths: List[int]) -> None
+    """
     start_vals = random.choices(range(50000), k=n)
     lengths = random.choices(range(1000, 2000), k=n)
     streaming = Streaming(start_vals, lengths)
