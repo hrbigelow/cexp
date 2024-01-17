@@ -10,7 +10,8 @@ consists of a sequence of integers sent to a user.  The sequence is defined by
 pseudo-code: 
 
 response(seed, length):
-    a, b = seed, seed
+    start = seed % 1000
+    a, b = start, start 
     for _ in range(length):
         a, b = b, (a + b) % 10000
         yield a
